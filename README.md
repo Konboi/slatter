@@ -1,6 +1,7 @@
 # slatter
 
-slatter is tool for slack. using like twitter
+slatter is tool for slack.
+gather some channel comment and republish a channel.
 
 # Useage
 
@@ -18,5 +19,5 @@ gather_channels:
   - your
   - slack team
   - channel name
-daliver_channel: feed
+daliver_channel: feed-channel
 ```

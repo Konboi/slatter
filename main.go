@@ -26,8 +26,8 @@ type Client struct {
 	config          Config
 	slackClient     *slack.Client
 	ReplyCh         chan *slack.MessageEvent
-	Channels        map[string]string
-	Users           map[string]User
+	Channels        map[string]slack.Channel
+	Users           map[string]slack.User
 	Team            *slack.TeamInfo
 	DaliverChnnelID string
 }
@@ -58,7 +58,7 @@ func main() {
 		select {
 		case msg := <-cli.ReplyCh:
 			for _, ch := range cli.config.GatherChannels {
-				if strings.Compare(cli.Channels[msg.Channel], ch) == 0 {
+				if strings.Compare(cli.Channels[msg.Channel].Name, ch) == 0 {
 					go cli.DaliverMessage(msg)
 				}
 			}
@@ -76,24 +76,20 @@ func NewClient(config Config) (cli *Client, err error) {
 		return nil, err
 	}
 
-	channelMap := make(map[string]string)
+	channelMap := make(map[string]slack.Channel)
 	var daliver_channel_id string
 
-	for _, v := range channels {
-		channelMap[v.ID] = v.Name
-		if strings.Compare(v.Name, config.DailverChanel) == 0 {
-			daliver_channel_id = v.ID
+	for _, c := range channels {
+		channelMap[c.ID] = c
+		if strings.Compare(c.Name, config.DailverChanel) == 0 {
+			daliver_channel_id = c.ID
 		}
 	}
 
-	userMap := make(map[string]User)
+	userMap := make(map[string]slack.User)
 	users, err := scli.GetUsers()
 	for _, u := range users {
-		userMap[u.ID] = User{
-			ID:      u.ID,
-			Name:    u.Name,
-			IconURL: u.Profile.Image24,
-		}
+		userMap[u.ID] = u
 	}
 
 	return &Client{
@@ -158,9 +154,9 @@ func (cli *Client) DaliverMessage(msg *slack.MessageEvent) {
 	}
 
 	attachment := slack.Attachment{
-		Text:       fmt.Sprintf("%s from <%s|#%s>", msg.Text, fmt.Sprintf("https://%s.slack.com/archives/%s", cli.Team.Domain, cli.Channels[msg.Channel]), cli.Channels[msg.Channel]),
+		Text:       fmt.Sprintf("%s from <%s|#%s>", msg.Text, fmt.Sprintf("https://%s.slack.com/archives/%s", cli.Team.Domain, cli.Channels[msg.Channel].Name), cli.Channels[msg.Channel].Name),
 		Footer:     cli.Users[msg.User].Name,
-		FooterIcon: cli.Users[msg.User].IconURL,
+		FooterIcon: cli.Users[msg.User].Profile.Image24,
 		Ts:         int64(ts),
 	}
 	attachments = append(attachments, attachment)
