@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -9,27 +10,24 @@ import (
 	"strings"
 
 	"github.com/nlopes/slack"
+	"github.com/pkg/errors"
 	"gopkg.in/yaml.v2"
-)
-
-var (
-	configFile = flag.String("c", "config.yml", "config file")
 )
 
 type Config struct {
 	Token          string   `yaml:"token"`
 	GatherChannels []string `yaml:"gather_channels"`
-	DailverChanel  string   `yaml:"daliver_channel"`
+	DailverChannel string   `yaml:"daliver_channel"`
 }
 
 type Client struct {
-	config          Config
-	slackClient     *slack.Client
-	ReplyCh         chan *slack.MessageEvent
-	Channels        map[string]slack.Channel
-	Users           map[string]slack.User
-	Team            *slack.TeamInfo
-	DaliverChnnelID string
+	config           Config
+	slackClient      *slack.Client
+	ReplyCh          chan *slack.MessageEvent
+	Channels         map[string]slack.Channel
+	Users            map[string]slack.User
+	Team             *slack.TeamInfo
+	DaliverChannelID string
 }
 
 type User struct {
@@ -39,18 +37,18 @@ type User struct {
 }
 
 func main() {
+	var configFile string
+	flag.StringVar(&configFile, "c", "config.yml", "config file")
 	flag.Parse()
 
-	config, err := NewConfig(*configFile)
+	config, err := NewConfig(configFile)
 	if err != nil {
-		log.Println(err)
-		return
+		log.Fatalln("error new config", err.Error())
 	}
 
 	cli, err := NewClient(config)
 	if err != nil {
-		fmt.Println(err.Error())
-		return
+		log.Fatalln("error new client", err.Error())
 	}
 	go cli.Run()
 
@@ -66,54 +64,16 @@ func main() {
 	}
 }
 
-func NewClient(config Config) (cli *Client, err error) {
-	scli := slack.New(config.Token)
-
-	team, err := scli.GetTeamInfo()
-
-	channels, err := scli.GetChannels(true)
-	if err != nil {
-		return nil, err
-	}
-
-	channelMap := make(map[string]slack.Channel)
-	var daliver_channel_id string
-
-	for _, c := range channels {
-		channelMap[c.ID] = c
-		if strings.Compare(c.Name, config.DailverChanel) == 0 {
-			daliver_channel_id = c.ID
-		}
-	}
-
-	userMap := make(map[string]slack.User)
-	users, err := scli.GetUsers()
-	for _, u := range users {
-		userMap[u.ID] = u
-	}
-
-	return &Client{
-		config:          config,
-		slackClient:     scli,
-		ReplyCh:         make(chan *slack.MessageEvent),
-		Channels:        channelMap,
-		Users:           userMap,
-		Team:            team,
-		DaliverChnnelID: daliver_channel_id,
-	}, nil
-}
-
 func NewConfig(path string) (config Config, err error) {
 	config = Config{}
 
 	data, err := ioutil.ReadFile(path)
-
 	if err != nil {
-		return config, err
+		return config, errors.Wrap(err, "error read file")
 	}
 
 	if err := yaml.Unmarshal(data, &config); err != nil {
-		return config, err
+		return config, errors.Wrap(err, "error unmarshal")
 	}
 
 	if config.Token == "" {
@@ -121,6 +81,50 @@ func NewConfig(path string) (config Config, err error) {
 	}
 
 	return config, nil
+}
+
+func NewClient(config Config) (cli *Client, err error) {
+	scli := slack.New(config.Token)
+
+	team, err := scli.GetTeamInfo()
+	if err != nil {
+		return nil, errors.Wrap(err, "error get team info")
+	}
+
+	channels, err := scli.GetChannels(true)
+	if err != nil {
+		return nil, errors.Wrap(err, "error get channels")
+	}
+
+	channelMap := make(map[string]slack.Channel)
+	var daliver_channel_id string
+
+	for _, c := range channels {
+		channelMap[c.ID] = c
+		if strings.Compare(c.Name, config.DailverChannel) == 0 {
+			daliver_channel_id = c.ID
+		}
+	}
+
+	userMap := make(map[string]slack.User)
+	users, err := scli.GetUsers()
+	if err != nil {
+		return nil, errors.Wrap(err, "error get users")
+	}
+
+	for _, u := range users {
+		userMap[u.ID] = u
+	}
+
+	return &Client{
+		config:           config,
+		slackClient:      scli,
+		ReplyCh:          make(chan *slack.MessageEvent),
+		Channels:         channelMap,
+		Users:            userMap,
+		Team:             team,
+		DaliverChannelID: daliver_channel_id,
+	}, nil
 }
 
 func (cli *Client) Run() {
@@ -140,7 +144,7 @@ func (cli *Client) Run() {
 			case *slack.MessageEvent:
 				cli.ReplyCh <- ev
 			case *slack.RTMError:
-				fmt.Printf("Error %s \n", ev.Error())
+				fmt.Printf("error rtm message %s \n", ev.Error())
 			}
 		}
 	}
@@ -157,11 +161,11 @@ func (cli *Client) DaliverMessage(msg *slack.MessageEvent) {
 		Text:       fmt.Sprintf("%s from <%s|#%s>", msg.Text, fmt.Sprintf("https://%s.slack.com/archives/%s", cli.Team.Domain, cli.Channels[msg.Channel].Name), cli.Channels[msg.Channel].Name),
 		Footer:     cli.Users[msg.User].Name,
 		FooterIcon: cli.Users[msg.User].Profile.Image24,
-		Ts:         int64(ts),
+		Ts:         json.Number(fmt.Sprintf("%d", ts)),
 	}
 	attachments = append(attachments, attachment)
 
-	_, _, err = cli.slackClient.PostMessage(cli.DaliverChnnelID, "", slack.PostMessageParameters{
+	_, _, err = cli.slackClient.PostMessage(cli.DaliverChannelID, "", slack.PostMessageParameters{
 		Attachments: attachments,
 	})
 	if err != nil {
