@@ -97,12 +97,12 @@ func NewClient(config Config) (cli *Client, err error) {
 	}
 
 	channelMap := make(map[string]slack.Channel)
-	var daliver_channel_id string
+	var daliverChannelID string
 
 	for _, c := range channels {
 		channelMap[c.ID] = c
 		if strings.Compare(c.Name, config.DailverChannel) == 0 {
-			daliver_channel_id = c.ID
+			daliverChannelID = c.ID
 		}
 	}
 
@@ -123,7 +123,7 @@ func NewClient(config Config) (cli *Client, err error) {
 		Channels:         channelMap,
 		Users:            userMap,
 		Team:             team,
-		DaliverChannelID: daliver_channel_id,
+		DaliverChannelID: daliverChannelID,
 	}, nil
 }
 
@@ -161,7 +161,7 @@ func (cli *Client) DaliverMessage(msg *slack.MessageEvent) {
 		Text:       fmt.Sprintf("%s from <%s|#%s>", msg.Text, fmt.Sprintf("https://%s.slack.com/archives/%s", cli.Team.Domain, cli.Channels[msg.Channel].Name), cli.Channels[msg.Channel].Name),
 		Footer:     cli.Users[msg.User].Name,
 		FooterIcon: cli.Users[msg.User].Profile.Image24,
-		Ts:         json.Number(fmt.Sprintf("%d", ts)),
+		Ts:         json.Number(fmt.Sprintf("%f", ts)),
 	}
 	attachments = append(attachments, attachment)
 
